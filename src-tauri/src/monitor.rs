@@ -59,6 +59,7 @@ impl InspectorHandle {
         let thread = {
             let state = Arc::clone(&self.state);
             let mut monitors = get_all_monitors();
+            let mut last_refresh = std::time::Instant::now();
 
             thread::spawn(move || {
                 loop {
@@ -66,6 +67,11 @@ impl InspectorHandle {
 
                     if !state.lock().unwrap().running {
                         break;
+                    }
+
+                    if last_refresh.elapsed() > Duration::from_secs(1) {
+                        monitors = get_all_monitors();
+                        last_refresh = std::time::Instant::now();
                     }
 
                     let lock = state.lock().unwrap();
