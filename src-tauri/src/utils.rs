@@ -1,27 +1,21 @@
-use serde_json::de;
 use widestring::{U16CStr, U16CString};
-use windows::{
-    core::{BOOL, PCWSTR},
-    Win32::{
-        Devices::Display::{
-            DisplayConfigGetDeviceInfo, GetDisplayConfigBufferSizes, QueryDisplayConfig,
-            DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME, DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME,
-            DISPLAYCONFIG_DEVICE_INFO_HEADER, DISPLAYCONFIG_DEVICE_INFO_TYPE,
-            DISPLAYCONFIG_ROTATION, DISPLAYCONFIG_ROTATION_IDENTITY,
-            DISPLAYCONFIG_ROTATION_ROTATE180, DISPLAYCONFIG_ROTATION_ROTATE270,
-            DISPLAYCONFIG_ROTATION_ROTATE90, DISPLAYCONFIG_SOURCE_DEVICE_NAME,
-            DISPLAYCONFIG_TARGET_DEVICE_NAME, QDC_ONLY_ACTIVE_PATHS,
-        },
-        Foundation::{ERROR_SUCCESS, FALSE, LPARAM, POINT, RECT, TRUE},
-        Graphics::Gdi::{
-            EnumDisplayMonitors, EnumDisplaySettingsExW, GetMonitorInfoW, MonitorFromPoint,
-            DEVMODEW, ENUM_CURRENT_SETTINGS, ENUM_DISPLAY_SETTINGS_FLAGS, HDC, HMONITOR,
-            MONITORINFO, MONITORINFOEXW, MONITOR_DEFAULTTONEAREST,
-        },
-        UI::WindowsAndMessaging::{
-            GetCursorPos, SystemParametersInfoW, HSHELL_MONITORCHANGED, SPIF_SENDCHANGE,
-            SPI_SETMOUSETRAILS,
-        },
+use windows::Win32::{
+    Devices::Display::{
+        DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME, DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME,
+        DISPLAYCONFIG_DEVICE_INFO_HEADER, DISPLAYCONFIG_ROTATION, DISPLAYCONFIG_ROTATION_IDENTITY,
+        DISPLAYCONFIG_ROTATION_ROTATE90, DISPLAYCONFIG_ROTATION_ROTATE180,
+        DISPLAYCONFIG_ROTATION_ROTATE270, DISPLAYCONFIG_SOURCE_DEVICE_NAME,
+        DISPLAYCONFIG_TARGET_DEVICE_NAME, DisplayConfigGetDeviceInfo, GetDisplayConfigBufferSizes,
+        QDC_ONLY_ACTIVE_PATHS, QueryDisplayConfig,
+    },
+    Foundation::POINT,
+    Graphics::Gdi::{
+        GetMonitorInfoW, MONITOR_DEFAULTTONEAREST,
+        MONITORINFO, MONITORINFOEXW, MonitorFromPoint,
+    },
+    UI::WindowsAndMessaging::{
+        GetCursorPos, SPI_SETMOUSETRAILS, SPIF_SENDCHANGE,
+        SystemParametersInfoW,
     },
 };
 
@@ -103,7 +97,7 @@ pub fn get_all_monitors() -> Vec<MonitorInfo> {
         let mut patharray_size = 0;
         let mut mode_info_size = 0;
 
-        let ret = GetDisplayConfigBufferSizes(
+        let _ret = GetDisplayConfigBufferSizes(
             QDC_ONLY_ACTIVE_PATHS,
             &mut patharray_size,
             &mut mode_info_size,
@@ -112,7 +106,7 @@ pub fn get_all_monitors() -> Vec<MonitorInfo> {
         let mut patharray = vec![std::mem::zeroed(); patharray_size as usize];
         let mut mode_info = vec![std::mem::zeroed(); mode_info_size as usize];
 
-        let ret = QueryDisplayConfig(
+        let _ret = QueryDisplayConfig(
             QDC_ONLY_ACTIVE_PATHS,
             &mut patharray_size,
             patharray.as_mut_ptr(),

@@ -1,10 +1,3 @@
-use std::{thread::sleep, time::Duration};
-
-use windows::Win32::UI::WindowsAndMessaging::{
-    SystemParametersInfoW, SPIF_SENDCHANGE, SPI_SETMOUSETRAILS,
-};
-
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[macro_export]
 macro_rules! gen_handlers {
     () => {

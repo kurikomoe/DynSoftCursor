@@ -7,8 +7,8 @@ use std::{
 use tauri::{Emitter, State};
 
 use crate::utils::{
-    get_all_monitors, get_mouse_monitor, hardware_mouse, software_mouse, MonitorInfo,
-    MonitorInfoDto, Orientation,
+    MonitorInfoDto, Orientation, get_all_monitors, get_mouse_monitor, hardware_mouse,
+    software_mouse,
 };
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -18,11 +18,11 @@ pub enum CursorMode {
     Hardware,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub struct InspectorState {
     pub running: bool,
-    pub current_monitor: MonitorInfoDto,
+    pub current_monitor: Option<MonitorInfoDto>,
     pub cursor_mode: CursorMode,
 }
 
@@ -34,11 +34,9 @@ pub struct InspectorHandle {
 impl Default for InspectorHandle {
     fn default() -> Self {
         hardware_mouse().ok();
-        let monitors = get_all_monitors();
-        let monitor = get_mouse_monitor(&monitors).unwrap_or_else(|| monitors[0].clone());
         let state = InspectorState {
             running: false,
-            current_monitor: monitor.into(),
+            current_monitor: None,
             cursor_mode: CursorMode::Hardware,
         };
         let state = Arc::new(Mutex::new(state));
@@ -58,35 +56,56 @@ impl InspectorHandle {
         }
         self.state.lock().unwrap().running = true;
 
-        let state = Arc::clone(&self.state);
-        let thread = thread::spawn(move || loop {
-            thread::sleep(Duration::from_millis(10));
+        let thread = {
+            let state = Arc::clone(&self.state);
+            let mut monitors = get_all_monitors();
 
-            if !state.lock().unwrap().running {
-                break;
-            }
+            thread::spawn(move || {
+                loop {
+                    thread::sleep(Duration::from_millis(10));
 
-            let monitors = get_all_monitors();
-            if let Some(monitor) = get_mouse_monitor(&monitors) {
-                if state.lock().unwrap().current_monitor.path == monitor.path.to_string_lossy() {
-                    continue;
-                }
-
-                match monitor.orientation {
-                    Orientation::Default => {
-                        Self::toggle_mouse_mode(state.clone(), CursorMode::Hardware).ok()
+                    if !state.lock().unwrap().running {
+                        break;
                     }
-                    _ => Self::toggle_mouse_mode(state.clone(), CursorMode::Software).ok(),
-                };
 
-                {
-                    let mut lock = state.lock().unwrap();
-                    lock.current_monitor = monitor.into();
-                    let snapshot = lock.clone();
-                    notify(&snapshot);
+                    let lock = state.lock().unwrap();
+                    let current_monitor = lock.current_monitor.clone();
+                    drop(lock);
+                    if let Some(monitor) = get_mouse_monitor(&monitors) {
+                        let monitor_dto: MonitorInfoDto = monitor.into();
+                        if let Some(old_monitor) = current_monitor.as_ref()
+                            && old_monitor.path == monitor_dto.path
+                            && old_monitor.orientation == monitor_dto.orientation
+                        {
+                            continue;
+                        }
+
+                        match monitor_dto.orientation {
+                            Orientation::Default => {
+                                Self::toggle_mouse_mode(state.clone(), CursorMode::Hardware).ok()
+                            }
+                            _ => Self::toggle_mouse_mode(state.clone(), CursorMode::Software).ok(),
+                        };
+
+                        {
+                            let mut lock = state.lock().unwrap();
+                            lock.current_monitor = Some(monitor_dto);
+                            let snapshot = lock.clone();
+                            drop(lock);
+                            notify(&snapshot);
+                        }
+                    } else {
+                        let refreshed = get_all_monitors();
+                        let mut lock = state.lock().unwrap();
+                        monitors = refreshed;
+                        lock.current_monitor = None;
+                        let snapshot = lock.clone();
+                        drop(lock);
+                        notify(&snapshot);
+                    }
                 }
-            }
-        });
+            })
+        };
 
         self.thread_handle = Some(thread);
     }

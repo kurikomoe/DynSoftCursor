@@ -1,4 +1,4 @@
-#![allow(dead_code, unused_variables, unused_imports)]
+// #![allow(dead_code, unused_variables, unused_imports)]
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 
 use tauri::{
@@ -14,7 +14,6 @@ use crate::monitor::InspectorHandle;
 
 pub mod commands;
 pub mod monitor;
-pub mod mouse;
 pub mod utils;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
