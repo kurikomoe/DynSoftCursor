@@ -1,11 +1,10 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from "svelte";
-  import { fade, fly, scale } from "svelte/transition";
+  import { fade, fly } from "svelte/transition";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { attachConsole, info, error } from "@tauri-apps/plugin-log";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { request } from "node:http";
 
   type CursorMode = "software" | "hardware";
   type Orientation = "default" | "rotate-left" | "rotate-right" | "upside-down";
@@ -19,7 +18,7 @@
 
   type InspectorState = {
     running: boolean;
-    current_monitor: MonitorInfoDto;
+    current_monitor: MonitorInfoDto|null;
     cursor_mode: CursorMode;
   };
 
@@ -101,6 +100,7 @@
       requestAnimationFrame(() =>
         requestAnimationFrame(async () => {
           await tick();
+          await tick();
           const window = getCurrentWindow();
           await window.show();
           await window.setFocus();
@@ -145,7 +145,6 @@
               <strong
                 class:ok={state.running}
                 class:bad={!state.running}
-                in:scale={{ duration: 250, start: 0.75 }}
               >
                 {state.running ? "Running" : "Stopped"}
               </strong>
@@ -170,7 +169,7 @@
           <h2>Current Monitor</h2>
           <div class="row">
             <span>Name</span>
-            {#key state.current_monitor.name}
+            {#key state.current_monitor?.name}
               <strong in:fly={{ x: 12, duration: 300 }}>
                 {state.current_monitor?.name ?? "-"}
               </strong>
@@ -178,23 +177,23 @@
           </div>
           <div class="row">
             <span>Orientation</span>
-            {#key state.current_monitor.orientation}
+            {#key state.current_monitor?.orientation}
               <strong in:fly={{ x: 12, duration: 300 }}>
-                {orientationLabel[state.current_monitor.orientation]}
+                {orientationLabel[state.current_monitor?.orientation || "default"]}
               </strong>
             {/key}
           </div>
           <div class="row">
             <span>Refresh</span>
-            {#key state.current_monitor.refresh_rate}
+            {#key state.current_monitor?.refresh_rate}
               <strong in:fly={{ x: 12, duration: 300 }}>
-                {state.current_monitor.refresh_rate.toFixed(1)} Hz
+                {state.current_monitor?.refresh_rate.toFixed(1)} Hz
               </strong>
             {/key}
           </div>
-          {#key state.current_monitor.path}
+          {#key state.current_monitor?.path}
             <div class="path" in:fade={{ duration: 300 }}>
-              {state.current_monitor.path}
+              {state.current_monitor?.path}
             </div>
           {/key}
         </article>
@@ -243,6 +242,7 @@
 <style>
   :global(body) {
     margin: 0;
+    overflow: hidden;
     font-family: "Avenir Next", "Segoe UI", sans-serif;
     background: radial-gradient(
       circle at 20% 20%,
@@ -254,7 +254,8 @@
   }
 
   .page {
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
     display: grid;
     place-items: center;
     padding: 24px;

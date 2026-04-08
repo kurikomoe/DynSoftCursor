@@ -10,12 +10,10 @@ use windows::Win32::{
     },
     Foundation::POINT,
     Graphics::Gdi::{
-        GetMonitorInfoW, MONITOR_DEFAULTTONEAREST,
-        MONITORINFO, MONITORINFOEXW, MonitorFromPoint,
+        GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MONITORINFOEXW, MonitorFromPoint,
     },
     UI::WindowsAndMessaging::{
-        GetCursorPos, SPI_SETMOUSETRAILS, SPIF_SENDCHANGE,
-        SystemParametersInfoW,
+        GetCursorPos, SPI_SETMOUSETRAILS, SPIF_SENDCHANGE, SystemParametersInfoW,
     },
 };
 

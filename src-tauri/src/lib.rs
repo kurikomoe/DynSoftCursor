@@ -1,10 +1,13 @@
 // #![allow(dead_code, unused_variables, unused_imports)]
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
 use tauri::{
+    Manager,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
 };
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::NotificationExt as _;
@@ -38,6 +41,13 @@ pub fn run() {
     let tray_notified = Arc::new(AtomicBool::new(false));
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            if let Some(window) = app.get_webview_window("main") {
+                window.show().ok();
+                window.unminimize().ok();
+                window.set_focus().ok();
+            }
+        }))
         .plugin(plugin_log)
         .plugin(plugin_window_state)
         .plugin(tauri_plugin_opener::init())

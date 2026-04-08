@@ -16,8 +16,8 @@
         "width": 800,
         "height": 500,
         "visible": false,
-        "transparent": true,
-        "resizable": false
+        "resizable": false,
+        "transparent": false
       }
     ],
     "security": {
