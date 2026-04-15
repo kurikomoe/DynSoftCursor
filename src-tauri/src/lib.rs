@@ -9,15 +9,20 @@ use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
-use tauri_plugin_log::{Target, TargetKind};
+use tauri_plugin_log::{
+    Target, TargetKind,
+    log::info,
+};
 use tauri_plugin_notification::NotificationExt as _;
 use tauri_plugin_window_state::StateFlags;
 
 use crate::monitor::InspectorHandle;
+use crate::window_control::{hide_main_window, show_main_window, toggle_main_window};
 
 pub mod commands;
 pub mod monitor;
 pub mod utils;
+pub mod window_control;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -42,11 +47,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            if let Some(window) = app.get_webview_window("main") {
-                window.show().ok();
-                window.unminimize().ok();
-                window.set_focus().ok();
-            }
+            show_main_window(app);
         }))
         .plugin(plugin_log)
         .plugin(plugin_window_state)
@@ -55,15 +56,14 @@ pub fn run() {
         .on_window_event(move |window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                window.hide().ok();
+                let app = window.app_handle();
+                hide_main_window(app);
 
                 if tray_notified
                     .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
                     .is_ok()
                 {
-                    window
-                        .app_handle()
-                        .notification()
+                    app.notification()
                         .builder()
                         .title("Portrait Monitor Fixer")
                         .body("App is still running in the system tray.")
@@ -95,10 +95,7 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(move |app, event| match event.id.as_ref() {
                     "show" => {
-                        if let Some(w) = app.get_webview_window("main") {
-                            w.show().ok();
-                            w.set_focus().ok();
-                        }
+                        show_main_window(app);
                     }
                     "quit" => {
                         app.exit(0);
@@ -113,14 +110,7 @@ pub fn run() {
                     } = event
                     {
                         let app = tray.app_handle();
-                        if let Some(w) = app.get_webview_window("main") {
-                            if w.is_visible().unwrap_or(false) {
-                                w.hide().ok();
-                            } else {
-                                w.show().ok();
-                                w.set_focus().ok();
-                            }
-                        }
+                        toggle_main_window(&app);
                     }
                 })
                 .build(app)?;
@@ -128,6 +118,19 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(gen_handlers!())
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app_handle, event| {
+            #[allow(clippy::single_match)]
+            match event {
+                tauri::RunEvent::ExitRequested { api, code, .. } => {
+                    if code.is_none() {
+                        api.prevent_exit();
+                    } else {
+                        info!("exit code: {:?}", code);
+                    }
+                }
+                _ => {}
+            }
+        });
 }
