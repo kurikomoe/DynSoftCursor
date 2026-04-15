@@ -1,3 +1,4 @@
+use anyhow::Result;
 use widestring::{U16CStr, U16CString};
 use windows::Win32::{
     Devices::Display::{
@@ -17,7 +18,7 @@ use windows::Win32::{
     },
 };
 
-pub fn software_mouse() -> anyhow::Result<()> {
+pub fn software_mouse() -> Result<()> {
     unsafe {
         SystemParametersInfoW(
             SPI_SETMOUSETRAILS,
@@ -29,7 +30,7 @@ pub fn software_mouse() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn hardware_mouse() -> anyhow::Result<()> {
+pub fn hardware_mouse() -> Result<()> {
     unsafe {
         SystemParametersInfoW(SPI_SETMOUSETRAILS, 0, None, SPIF_SENDCHANGE)?;
     }
@@ -88,23 +89,29 @@ impl From<MonitorInfo> for MonitorInfoDto {
     }
 }
 
-pub fn get_all_monitors() -> Vec<MonitorInfo> {
+pub fn get_all_monitors() -> Result<Vec<MonitorInfo>> {
     unsafe {
         let mut monitors = Vec::new();
 
         let mut patharray_size = 0;
         let mut mode_info_size = 0;
 
-        let _ret = GetDisplayConfigBufferSizes(
+        let ret = GetDisplayConfigBufferSizes(
             QDC_ONLY_ACTIVE_PATHS,
             &mut patharray_size,
             &mut mode_info_size,
         );
+        if ret.is_err() {
+            anyhow::bail!("GetDisplayConfigBufferSizes failed: {ret:?}");
+        }
+        if patharray_size == 0 {
+            anyhow::bail!("GetDisplayConfigBufferSizes returned no active display paths");
+        }
 
         let mut patharray = vec![std::mem::zeroed(); patharray_size as usize];
         let mut mode_info = vec![std::mem::zeroed(); mode_info_size as usize];
 
-        let _ret = QueryDisplayConfig(
+        let ret = QueryDisplayConfig(
             QDC_ONLY_ACTIVE_PATHS,
             &mut patharray_size,
             patharray.as_mut_ptr(),
@@ -112,6 +119,9 @@ pub fn get_all_monitors() -> Vec<MonitorInfo> {
             mode_info.as_mut_ptr(),
             None,
         );
+        if ret.is_err() {
+            anyhow::bail!("QueryDisplayConfig failed: {ret:?}");
+        }
 
         for item in patharray.iter() {
             let target_info = item.targetInfo;
@@ -130,15 +140,17 @@ pub fn get_all_monitors() -> Vec<MonitorInfo> {
                 },
                 ..Default::default()
             };
-            DisplayConfigGetDeviceInfo(&mut req.header);
-
-            let name = U16CStr::from_slice_truncate(&req.monitorFriendlyDeviceName)
-                .unwrap()
-                .to_string_lossy();
-
-            let path = U16CStr::from_slice_truncate(&req.monitorDevicePath)
-                .unwrap()
-                .to_ucstring();
+            if DisplayConfigGetDeviceInfo(&mut req.header) != 0 {
+                anyhow::bail!("DisplayConfigGetDeviceInfo target name failed");
+            }
+            let name = match U16CStr::from_slice_truncate(&req.monitorFriendlyDeviceName) {
+                Ok(v) => v.to_string_lossy(),
+                Err(_) => anyhow::bail!("invalid target monitor friendly name"),
+            };
+            let path = match U16CStr::from_slice_truncate(&req.monitorDevicePath) {
+                Ok(v) => v.to_ucstring(),
+                Err(_) => anyhow::bail!("invalid target monitor path"),
+            };
 
             let mut req = DISPLAYCONFIG_SOURCE_DEVICE_NAME {
                 header: DISPLAYCONFIG_DEVICE_INFO_HEADER {
@@ -149,11 +161,13 @@ pub fn get_all_monitors() -> Vec<MonitorInfo> {
                 },
                 ..Default::default()
             };
-            DisplayConfigGetDeviceInfo(&mut req.header);
-
-            let gdi_path = U16CStr::from_slice_truncate(&req.viewGdiDeviceName)
-                .unwrap()
-                .to_ucstring();
+            if DisplayConfigGetDeviceInfo(&mut req.header) != 0 {
+                anyhow::bail!("DisplayConfigGetDeviceInfo source name failed");
+            }
+            let gdi_path = match U16CStr::from_slice_truncate(&req.viewGdiDeviceName) {
+                Ok(v) => v.to_ucstring(),
+                Err(_) => anyhow::bail!("invalid source GDI path"),
+            };
 
             monitors.push(MonitorInfo {
                 path,
@@ -164,19 +178,26 @@ pub fn get_all_monitors() -> Vec<MonitorInfo> {
             });
         }
 
-        monitors
+        Ok(monitors)
     }
 }
 
 pub fn get_mouse_monitor(monitors: &[MonitorInfo]) -> Option<MonitorInfo> {
     unsafe {
         let mut pos = POINT::default();
-        GetCursorPos(&mut pos).unwrap();
+        if GetCursorPos(&mut pos).is_err() {
+            return None;
+        }
         let h_monitor = MonitorFromPoint(pos, MONITOR_DEFAULTTONEAREST);
         let mut mi = MONITORINFOEXW::default();
         mi.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
-        GetMonitorInfoW(h_monitor, &mut mi.monitorInfo as *mut MONITORINFO).unwrap();
-        let gdi_path = U16CStr::from_slice_truncate(&mi.szDevice).unwrap();
+        if !GetMonitorInfoW(h_monitor, &mut mi.monitorInfo as *mut MONITORINFO).as_bool() {
+            return None;
+        }
+        let gdi_path = match U16CStr::from_slice_truncate(&mi.szDevice) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
         monitors
             .iter()
             .find(|item| item.gdi_path == gdi_path)
@@ -190,14 +211,14 @@ mod test {
 
     #[test]
     fn test_get_all_displays() {
-        let monitors = get_all_monitors();
+        let monitors = get_all_monitors().unwrap();
         dbg!(&monitors);
         assert_ne!(monitors.len(), 0);
     }
 
     #[test]
     fn test_get_mouse_monitor() {
-        let monitors = get_all_monitors();
+        let monitors = get_all_monitors().unwrap();
         let monitor = get_mouse_monitor(&monitors);
         dbg!(&monitor);
         assert!(monitor.is_some());

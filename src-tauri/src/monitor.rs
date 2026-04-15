@@ -1,7 +1,7 @@
 use std::{
     sync::{Arc, Mutex},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use tauri::{Emitter, State};
@@ -58,20 +58,35 @@ impl InspectorHandle {
 
         let thread = {
             let state = Arc::clone(&self.state);
-            let mut monitors = get_all_monitors();
-            let mut last_refresh = std::time::Instant::now();
+            let mut monitors = Vec::new();
+            let mut last_refresh = Instant::now();
+            let mut last_warn = Instant::now() - Duration::from_secs(10);
 
             thread::spawn(move || {
                 loop {
                     thread::sleep(Duration::from_millis(10));
 
-                    if !state.lock().unwrap().running {
+                    if !state
+                        .lock()
+                        .map(|s| s.running)
+                        .unwrap_or(false)
+                    {
                         break;
                     }
 
-                    if last_refresh.elapsed() > Duration::from_secs(1) {
-                        monitors = get_all_monitors();
-                        last_refresh = std::time::Instant::now();
+                    if last_refresh.elapsed() > Duration::from_secs(1) || monitors.is_empty() {
+                        if let Ok(refreshed) = get_all_monitors() {
+                            monitors = refreshed;
+                        } else {
+                            if last_warn.elapsed() > Duration::from_secs(5) {
+                                tauri_plugin_log::log::warn!(
+                                    "monitor probe skipped: failed to query monitor topology"
+                                );
+                                last_warn = Instant::now();
+                            }
+                            continue;
+                        }
+                        last_refresh = Instant::now();
                     }
 
                     let lock = state.lock().unwrap();
@@ -101,15 +116,23 @@ impl InspectorHandle {
                             notify(&snapshot);
                         }
                     } else {
-                        let refreshed = get_all_monitors();
-                        let mut lock = state.lock().unwrap();
-                        monitors = refreshed;
-                        lock.current_monitor = None;
-                        let snapshot = lock.clone();
-                        drop(lock);
-                        notify(&snapshot);
+                        if last_warn.elapsed() > Duration::from_secs(5) {
+                            tauri_plugin_log::log::warn!(
+                                "monitor probe skipped: failed to resolve current monitor from cursor"
+                            );
+                            last_warn = Instant::now();
+                        }
+                        continue;
                     }
                 }
+
+                // Ensure frontend does not display a stale "running" state
+                // if the worker exits unexpectedly.
+                let mut lock = state.lock().unwrap_or_else(|e| e.into_inner());
+                lock.running = false;
+                let snapshot = lock.clone();
+                drop(lock);
+                notify(&snapshot);
             })
         };
 
